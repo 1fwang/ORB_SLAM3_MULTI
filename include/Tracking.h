@@ -343,6 +343,10 @@ protected:
     bool mbVelocity{false};
     Sophus::SE3f mVelocity;
 
+    //ZUPT updater
+    int mZUPTConsectiveCnt = 0;
+    bool mbInZUPT = false;
+
     //Color order (true RGB, false BGR, ignored if grayscale)
     bool mbRGB;
 

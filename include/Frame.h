@@ -149,6 +149,9 @@ public:
     // Computes rotation, translation and camera center matrices from the camera pose.
     void UpdatePoseMatrices();
 
+    // Computes the index of matched point
+    int GetIndexInMapPoint(MapPoint* pMP) const;
+
     // Returns the camera center.
     inline Eigen::Vector3f GetCameraCenter(){
         return mOw;

@@ -569,6 +569,18 @@ void Frame::UpdatePoseMatrices()
     mtcw = mTcw.translation();
 }
 
+int Frame::GetIndexInMapPoint(MapPoint* pMP) const{
+    if (!pMP) return -1;
+    for (size_t i = 0; i < mvpMapPoints.size(); ++i)
+    {
+        if (mvpMapPoints[i] == pMP)
+        {
+            return i;
+        }
+    }
+    return -1;
+}
+
 Eigen::Matrix<float,3,1> Frame::GetImuPosition() const {
     return mRwc * mImuCalib.mTcb.translation() + mOw;
 }

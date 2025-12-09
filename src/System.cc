@@ -242,7 +242,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     }
 
     // Fix verbosity
-    Verbose::SetTh(Verbose::VERBOSITY_QUIET);
+    Verbose::SetTh(Verbose::VERBOSITY_NORMAL);
 }
 
 Sophus::SE3f System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timestamp, const vector<IMU::Point>& vImuMeas, string filename)
@@ -406,7 +406,7 @@ Sophus::SE3f System::TrackMulti(const cv::Mat &imLeft, const cv::Mat &imRight, c
             mpTracker->GrabImuData(vImuMeas[i_imu]);
 
     Sophus::SE3f Twb = mpTracker->GrabImageMulti(imLeftToFeed,imRightToFeed,imSideLeftToFeed,imSideRightToFeed,timestamp,filename);
-
+    // GrabImageMulti --> Main function where updating occurs
     unique_lock<mutex> lock2(mMutexState);
     mTrackingState = mpTracker->mState;
     mTrackedMapPoints = mpTracker->mCurrentFrame.mvpMapPoints;

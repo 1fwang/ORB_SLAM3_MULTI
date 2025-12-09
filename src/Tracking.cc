@@ -1548,8 +1548,8 @@ Sophus::SE3f Tracking::GrabImageMulti(const cv::Mat &imRectLeft, const cv::Mat &
     mImLeft = imRectLeft;
     mImRight = imRectRight;
     mImSideLeft = imRectSideLeft;
-    mImSideRight = imRectSideRight;
-
+    mImSideRight = imRectSideRight; 
+    // mImGray.channels() == 1
     if(mImGray.channels()==3)
     {
         //cout << "Image with 3 channels" << endl;
@@ -1842,35 +1842,89 @@ bool Tracking::PredictStateIMU()
         const Eigen::Vector3f twb1 = mpLastKeyFrame->GetImuPosition();
         const Eigen::Matrix3f Rwb1 = mpLastKeyFrame->GetImuRotation();
         const Eigen::Vector3f Vwb1 = mpLastKeyFrame->GetVelocity();
-
         const Eigen::Vector3f Gz(0, 0, -IMU::GRAVITY_VALUE);
         const float t12 = mpImuPreintegratedFromLastKF->dT;
-
+        const Eigen::Vector3f dV_preint =mCurrentFrame.mpImuPreintegratedFrame->GetDeltaVelocity(mLastFrame.mImuBias);
+        const Eigen::Vector3f dV_world = t12 * Gz + mLastFrame.GetImuRotation() * dV_preint;
+        const Eigen::Vector3f V_world = mLastFrame.GetVelocity();
         Eigen::Matrix3f Rwb2 = IMU::NormalizeRotation(Rwb1 * mpImuPreintegratedFromLastKF->GetDeltaRotation(mpLastKeyFrame->GetImuBias()));
         Eigen::Vector3f twb2 = twb1 + Vwb1*t12 + 0.5f*t12*t12*Gz+ Rwb1*mpImuPreintegratedFromLastKF->GetDeltaPosition(mpLastKeyFrame->GetImuBias());
         Eigen::Vector3f Vwb2 = Vwb1 + t12*Gz + Rwb1 * mpImuPreintegratedFromLastKF->GetDeltaVelocity(mpLastKeyFrame->GetImuBias());
-        mCurrentFrame.SetImuPoseVelocity(Rwb2,twb2,Vwb2);
 
-        mCurrentFrame.mImuBias = mpLastKeyFrame->GetImuBias();
-        mCurrentFrame.mPredBias = mCurrentFrame.mImuBias;
+        
+        ///////////// Stationary Situation Detecting Code ////////////////
+        //bool is_stationary =  (V_world.norm() < 5e-2 && dV_world.norm() < 5e-2);
+        bool is_stationary = false;
+        if(is_stationary)
+        {
+            //cout << "[IMU_DEBUG]" << 
+            //" | V_last = (" << V_world.x() << ", " << V_world.y() << ", " << V_world.z() << ")" << 
+            //" | norm = " << V_world.norm() << "\n" <<
+            //" | dV = (" << dV_preint.x() << ", " << dV_preint.y() << ", " << dV_preint.z() << ")" <<
+            //" | norm = " << dV_preint.norm() << "\n" <<
+            //" | dV_mettugi = ( " << dV_world.x() << dV_world.y() << dV_world.z() << ")" <<
+            //" | norm = " << dV_world.norm() << std::endl;
+            Eigen::Matrix3f Rwb2 = Rwb1;
+            Eigen::Vector3f twb2 = twb1;
+            Eigen::Vector3f Vwb2 = Eigen::Vector3f::Zero();
+        }
+        //////////////////////////////////////////////////////////////////  
+        
+        mCurrentFrame.SetImuPoseVelocity(Rwb2,twb2,Vwb2);
+        if(!is_stationary)
+        {
+            mCurrentFrame.mImuBias = mpLastKeyFrame->GetImuBias();
+            mCurrentFrame.mPredBias = mCurrentFrame.mImuBias;
+        }
+        else
+        {
+            mCurrentFrame.mImuBias = mLastFrame.mImuBias;
+            mCurrentFrame.mPredBias = mCurrentFrame.mImuBias;
+        }
+
         return true;
     }
-    else if(!mbMapUpdated)
+    else if(!mbMapUpdated) // almost every situations are assigned to this if
     {
         const Eigen::Vector3f twb1 = mLastFrame.GetImuPosition();
         const Eigen::Matrix3f Rwb1 = mLastFrame.GetImuRotation();
         const Eigen::Vector3f Vwb1 = mLastFrame.GetVelocity();
         const Eigen::Vector3f Gz(0, 0, -IMU::GRAVITY_VALUE);
         const float t12 = mCurrentFrame.mpImuPreintegratedFrame->dT;
-
+        const Eigen::Vector3f dV_preint =mCurrentFrame.mpImuPreintegratedFrame->GetDeltaVelocity(mLastFrame.mImuBias);
+        const Eigen::Vector3f V_world = mLastFrame.GetVelocity();
+        Eigen::Vector3f dV_world = t12 * Gz + mLastFrame.GetImuRotation() * dV_preint;
         Eigen::Matrix3f Rwb2 = IMU::NormalizeRotation(Rwb1 * mCurrentFrame.mpImuPreintegratedFrame->GetDeltaRotation(mLastFrame.mImuBias));
         Eigen::Vector3f twb2 = twb1 + Vwb1*t12 + 0.5f*t12*t12*Gz+ Rwb1 * mCurrentFrame.mpImuPreintegratedFrame->GetDeltaPosition(mLastFrame.mImuBias);
         Eigen::Vector3f Vwb2 = Vwb1 + t12*Gz + Rwb1 * mCurrentFrame.mpImuPreintegratedFrame->GetDeltaVelocity(mLastFrame.mImuBias);
 
+        //bool is_stationary = (V_world.norm() < 5e-2 && dV_world.norm() < 5e-2);
+        bool is_stationary = false;
+        if(is_stationary)
+        {
+            //cout << "[ZUPT_DEBUG]" << 
+            //" | V_last = (" << V_world.x() << ", " << V_world.y() << ", " << V_world.z() << ")" << 
+            //" | norm = " << V_world.norm() << "\n" <<
+            //" | dV = (" << dV_preint.x() << ", " << dV_preint.y() << ", " << dV_preint.z() << ")" <<
+            //" | norm = " << dV_preint.norm() << "\n" <<
+            //" | dV_mettugi = ( " << dV_world.x() << dV_world.y() << dV_world.z() << ")" <<
+            //" | norm = " << dV_world.norm() << std::endl;
+            Eigen::Matrix3f Rwb2 = Rwb1;
+            Eigen::Vector3f twb2 = twb1;
+            Eigen::Vector3f Vwb2 = Eigen::Vector3f::Zero();
+        }
         mCurrentFrame.SetImuPoseVelocity(Rwb2,twb2,Vwb2);
+        if(!is_stationary)
+        {
+            mCurrentFrame.mImuBias = mpLastKeyFrame->GetImuBias();
+            mCurrentFrame.mPredBias = mCurrentFrame.mImuBias;
+        }
+        else
+        {
+            mCurrentFrame.mImuBias = mLastFrame.mImuBias;
+            mCurrentFrame.mPredBias = mCurrentFrame.mImuBias;
+        }
 
-        mCurrentFrame.mImuBias = mLastFrame.mImuBias;
-        mCurrentFrame.mPredBias = mCurrentFrame.mImuBias;
         return true;
     }
     else
@@ -2043,7 +2097,10 @@ void Tracking::Track()
                     Verbose::PrintMess("TRACK: Track with motion model", Verbose::VERBOSITY_DEBUG);
                     bOK = TrackWithMotionModel();
                     if(!bOK)
+                    {
+                        Verbose::PrintMess("bOK false", Verbose::VERBOSITY_NORMAL);
                         bOK = TrackReferenceKeyFrame();
+                    }
                 }
 
 
@@ -2124,7 +2181,7 @@ void Tracking::Track()
             }
 
         }
-        else
+        else // mbOnlyTracking == True --> No need to see here
         {
             // Localization Mode: Local Mapping is deactivated (TODO Not available in inertial mode)
             if(mState==LOST)
@@ -2144,6 +2201,7 @@ void Tracking::Track()
                     }
                     else
                     {
+                        // cout << "mbVelocity false" << endl; not called
                         bOK = TrackReferenceKeyFrame();
                     }
                 }
@@ -2219,9 +2277,12 @@ void Tracking::Track()
 
             }
             if(!bOK)
+            {
                 cout << "Fail to track local map!" << endl;
+            }
+                
         }
-        else
+        else // mbOnlyTracking == True --> No need to see here
         {
             // mbVO true means that there are few matches to MapPoints in the map. We cannot retrieve
             // a local map and therefore we do not perform TrackLocalMap(). Once the system relocalizes
@@ -2230,7 +2291,7 @@ void Tracking::Track()
                 bOK = TrackLocalMap();
         }
 
-        if(bOK)
+        if(bOK) // State decision code (Not Important...)
             mState = OK;
         else if (mState == OK)
         {
@@ -2300,6 +2361,15 @@ void Tracking::Track()
             {
                 Sophus::SE3f LastTwc = mLastFrame.GetPose().inverse();
                 mVelocity = mCurrentFrame.GetPose() * LastTwc;
+                // added for debug
+                //Eigen::Matrix<float,6,1> xi = mVelocity.log();
+                //cout << "|v| = " << xi.tail<3>().norm() << " |w| = " << xi.head<3>().norm() << endl;
+                // Not any difference with common stop situation and exp02 situation
+                Sophus::SE3f tempTcw = mCurrentFrame.GetPose();
+                Sophus::SE3f tempTwc = tempTcw.inverse();
+                Eigen::Vector3f p_w = tempTwc.translation();
+                //cout << "[POSE] z = " << p_w.z() << "t = " << mCurrentFrame.mTimeStamp << " state = " << mState << endl;
+                //////////// END ////////////
                 mbVelocity = true;
             }
             else {
@@ -2334,13 +2404,59 @@ void Tracking::Track()
             std::chrono::steady_clock::time_point time_StartNewKF = std::chrono::steady_clock::now();
 #endif
             bool bNeedKF = NeedNewKeyFrame();
+            
+            ///////////////////////////// ZUPT with image ///////////////////////////////
+            float avg_dy = 0;
+            float avg_dx = 0;
+            int cnt = 0;
+            for (int i = 0; i < mCurrentFrame.N; ++i) // N: number of "KeyPoints" not featurepoints
+            {
+                MapPoint* pMP = mCurrentFrame.mvpMapPoints[i];
+                if(!pMP) continue;
+                int idx_last = mLastFrame.GetIndexInMapPoint(pMP);
+                if(idx_last < 0) continue;
+                const cv::KeyPoint& kc = mCurrentFrame.mvKeysUn[i];
+                const cv::KeyPoint& kl = mLastFrame.mvKeysUn[idx_last];
+                float dx = kc.pt.x - kl.pt.x;
+                float dy = kc.pt.y - kl.pt.y;
+                if(!std::isfinite(dx) || !std::isfinite(dy)) continue;
+                if (fabs(dx) > 30 || fabs(dy) > 30) continue;
+                avg_dy += dy;
+                avg_dx += dx;
+                cnt++;
+            }
+            if (cnt > 50)
+            {        
+                avg_dx /= cnt;
+                avg_dy /= cnt;
+                cout << "[ZUPT]  avg_dx = " << avg_dx << " avg_dy = " << avg_dy << " cnt = " << cnt << endl;
+                if (fabs(avg_dy) < 0.3f && fabs(avg_dx) < 0.3f)
+                {
+                    mZUPTConsectiveCnt++;
+                    cout << "[ZUPT] Zero velocity state detected, Cnt : " << mZUPTConsectiveCnt << endl;
+                    mCurrentFrame.SetImuPoseVelocity(mLastFrame.GetImuRotation(), mLastFrame.GetImuPosition(), Eigen::Vector3f::Zero());
+                    mCurrentFrame.mImuBias = mLastFrame.mImuBias;
+                    mCurrentFrame.mPredBias = mCurrentFrame.mImuBias;
+                }
+                else
+                {
+                    mbInZUPT = false;
+                    mZUPTConsectiveCnt = 0;
+                }
+            }
+            else
+            {
+                avg_dx /= cnt;
+                avg_dy /= cnt;
+                cout << "[ZUPT: Elsecase] avg_dx = " << avg_dx << " avg_dy = " << avg_dy << " cnt = " << cnt << endl;
+            }
+            /////////////////////////////////////////////////////////////////////////////
 
             // Check if we need to insert a new keyframe
             // if(bNeedKF && bOK)
             if(bNeedKF && (bOK || (mInsertKFsLost && mState==RECENTLY_LOST &&
                                    (mSensor == System::IMU_MONOCULAR || mSensor == System::IMU_STEREO || mSensor == System::IMU_RGBD || mSensor == System::IMU_MULTI))))
                 CreateNewKeyFrame();
-
 #ifdef REGISTER_TIMES
             std::chrono::steady_clock::time_point time_EndNewKF = std::chrono::steady_clock::now();
 
@@ -2357,7 +2473,7 @@ void Tracking::Track()
                 if(mCurrentFrame.mvpMapPoints[i] && mCurrentFrame.mvbOutlier[i])
                     mCurrentFrame.mvpMapPoints[i]=static_cast<MapPoint*>(NULL);
             }
-        }
+        } //if(bOK || mState==RECENTLY_LOST)
 
         // Reset if the camera get lost soon after initialization
         if(mState==LOST)
@@ -2378,12 +2494,12 @@ void Tracking::Track()
             CreateMapInAtlas();
 
             return;
-        }
+        } //if(mState==LOST)
 
         if(!mCurrentFrame.mpReferenceKF)
             mCurrentFrame.mpReferenceKF = mpReferenceKF;
 
-        mLastFrame = Frame(mCurrentFrame);
+        mLastFrame = Frame(mCurrentFrame); // LastFrame, CurrentFrame exchange
     }
 
 
@@ -2409,7 +2525,7 @@ void Tracking::Track()
             mlbLost.push_back(mState==LOST);
         }
 
-    }
+    } //if(mState==OK || mState==RECENTLY_LOST)
 
 #ifdef REGISTER_LOOP
     if (Stop()) {
@@ -3035,10 +3151,10 @@ bool Tracking::TrackWithMotionModel()
     }
     else
     {
+        //cout << "elsecase" << endl; only called when not initialized
         mCurrentFrame.SetPose(mVelocity * mLastFrame.GetPose());
     }
-
-
+    // cout << "thirdcase" << endl;
 
 
     fill(mCurrentFrame.mvpMapPoints.begin(),mCurrentFrame.mvpMapPoints.end(),static_cast<MapPoint*>(NULL));
@@ -3126,6 +3242,7 @@ bool Tracking::TrackLocalMap()
 
     UpdateLocalMap();
     SearchLocalPoints();
+
 
     // TODO check outliers before PO
     int aux1 = 0, aux2=0;
